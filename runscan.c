@@ -48,8 +48,10 @@ int main(int argc, char ** argv) {
   printf("There are %u inodes in an inode table block and %u blocks in the idnode table\n", inodes_per_block, itable_blocks);
   //iterate the first inode block
   off_t start_inode_table = locate_inode_table(0, & group);
-  // __u32 savedIndoe[super.s_inodes_per_group];
+
+  // int savedIndoe[super.s_inodes_per_group];
   // int saved = 0;
+
   for (unsigned int i = 0; i < super.s_inodes_per_group; i++) {
     // printf("inode %u: \n", i);
     struct ext2_inode * inode = malloc(sizeof(struct ext2_inode));
@@ -157,30 +159,26 @@ int main(int argc, char ** argv) {
     free(inode);
   }
   // int count = 0;
-  // for (unsigned int i = 0; i < super.s_inodes_per_group; i++) {
-  //   if (count == saved) {
-  //     break;
-  //   }
-  //   struct ext2_inode * inode = malloc(sizeof(struct ext2_inode));
-  //   read_inode(fd, 0, start_inode_table, i, inode);
-  //   if (S_ISDIR(inode -> i_mode)) {
-  //       struct ext2_dir_entry_2 * entry;
-  //       unsigned int size;
-  //       unsigned char block[block_size];
-  //       lseek(fd, BLOCK_OFFSET(inode -> i_block[0]), SEEK_SET);
-  //       read(fd, block, block_size); /* read block from disk*/
-  //       size = 0; /* keep track of the bytes read */
-  //       entry = (struct ext2_dir_entry_2 * ) block; /* first entry in the directory */
-  //       while (size < inode -> i_size) {
-  //         printf("The current size is %u\n", size);
-  //         char file_name[EXT2_NAME_LEN + 1];
-  //         memcpy(file_name, entry -> name, entry -> name_len);
-  //         file_name[entry -> name_len] = 0; /* append null char to the file name */
-  //         printf("%10u %s\n", entry -> inode, file_name);
-  //         entry = (void * ) entry + entry -> rec_len; /* move to the next entry */
-  //         size += entry -> rec_len;
-  //       }
-  //   }
-  // }
+  for (unsigned int i = 0; i < super.s_inodes_per_group; i++) {
+    struct ext2_inode * inode = malloc(sizeof(struct ext2_inode));
+    read_inode(fd, 0, start_inode_table, i, inode);
+    if (S_ISDIR(inode -> i_mode)) {
+      struct ext2_dir_entry_2 *entry;
+      unsigned int size;
+      unsigned char block[block_size];
+      lseek(fd, BLOCK_OFFSET(inode->i_block[0]), SEEK_SET);
+      read(fd, block, block_size);                         /* read block from disk*/
+      size = 0;                                            /* keep track of the bytes read */
+      entry = (struct ext2_dir_entry_2 *) block;           /* first entry in the directory */
+      while(size < inode->i_size) {
+        char file_name[EXT2_NAME_LEN+1];
+        memcpy(file_name, entry->name, entry->name_len);
+        file_name[entry->name_len] = 0;              /* append null char to the file name */
+        printf("%10u %s\n", entry->inode, file_name);
+        entry = (void*) entry + sizeof(__u32) + sizeof(__u16) + sizeof(__u8) + sizeof(__u8) + sizeof(char) * entry->name_len; 
+        size += sizeof(__u32) + sizeof(__u16) + sizeof(__u8) + sizeof(__u8) + sizeof(char) * entry->name_len;;
+      }
+    }
+  }
   close(fd);
 }
