@@ -49,7 +49,7 @@ int main(int argc, char ** argv) {
   //iterate the first inode block
   off_t start_inode_table = locate_inode_table(0, & group);
   // __u32 savedIndoe[super.s_inodes_per_group];
-  int saved = 0;
+  // int saved = 0;
   for (unsigned int i = 0; i < super.s_inodes_per_group; i++) {
     // printf("inode %u: \n", i);
     struct ext2_inode * inode = malloc(sizeof(struct ext2_inode));
@@ -67,7 +67,7 @@ int main(int argc, char ** argv) {
       char actualData[block_size];
       if (is_jpg) {
         // savedIndoe[saved] = currentInodeNum;
-        saved++;
+        // saved++;
         char file[100];
         sprintf(file, "%s/file-%d.jpg", argv[2], currentInodeNum);
         int toWrite = open(file, O_RDWR | O_CREAT | O_TRUNC, 0644);
@@ -80,50 +80,75 @@ int main(int argc, char ** argv) {
             read(fd, actualData, block_size);
             write(toWrite, actualData, block_size);
           }
+
+
           else if (i == EXT2_IND_BLOCK) {
+            uint indirect1[block_size / 4];
             lseek(fd, BLOCK_OFFSET(inode -> i_block[i]), SEEK_SET);
-            char indirect1[4];
+            read(fd, indirect1, block_size);
             for(unsigned int p = 0; p < block_size / 4; p++){
-              lseek(fd, BLOCK_OFFSET(inode -> i_block[i] + 4 * p), SEEK_SET);
-              read(fd, indirect1, 4);
-              if(indirect1 == 0){
+              lseek(fd, BLOCK_OFFSET(indirect1[p]), SEEK_SET);
+              if(indirect1[p] == 0){
                 break;
               }
-              else{
-                lseek(fd, BLOCK_OFFSET(*indirect1), SEEK_SET);
+              read(fd, actualData, block_size);
+              write(toWrite, actualData, block_size);
+            }
+          }
+
+          else if (i == EXT2_DIND_BLOCK) {
+            uint indirect1[block_size / 4];
+            lseek(fd, BLOCK_OFFSET(inode -> i_block[i]), SEEK_SET);
+            read(fd, indirect1, block_size);
+            for(unsigned int p = 0; p < block_size / 4; p++){
+              lseek(fd, BLOCK_OFFSET(indirect1[p]), SEEK_SET);
+              if(indirect1[p] == 0){
+                break;
+              }
+              uint indirect2[block_size / 4];
+              read(fd, indirect2, block_size);
+              for(unsigned int p2 = 0; p2 < block_size / 4; p2++){
+                lseek(fd, BLOCK_OFFSET(indirect2[p2]), SEEK_SET);
+                if(indirect2[p2] == 0){
+                  break;
+                }
                 read(fd, actualData, block_size);
                 write(toWrite, actualData, block_size);
               }
             }
           }
-          // else if (i == EXT2_DIND_BLOCK) {
-          //   lseek(fd, BLOCK_OFFSET(inode -> i_block[i]), SEEK_SET);
-          //   char indirect1[4];
-          //   for(unsigned int p = 0; p < block_size / 4; p++){
-          //     lseek(fd, BLOCK_OFFSET(inode -> i_block[i] + 4 * p), SEEK_SET);
-          //     read(fd, indirect1, 4);
-          //     if(indirect1 == 0){
-          //       break;
-          //     }
-          //     else{
-          //       char indirect2[4];
-          //       for(unsigned int p2 = 0; p2 < block_size / 4; p++){
-          //         lseek(fd, BLOCK_OFFSET(*indirect1 + 4 * p2), SEEK_SET);
-          //         read(fd, indirect2, 4);
-          //         if(indirect2 == 0){
-          //           break;
-          //         }
-          //         else{
-          //           lseek(fd, BLOCK_OFFSET(*indirect2), SEEK_SET);
-          //           read(fd, actualData, block_size);
-          //           write(toWrite, actualData, block_size);
-          //         }
-          //       }
-          //     }
-          //   }
-          // }  
+
+          else if (i == EXT2_TIND_BLOCK) {
+            uint indirect1[block_size / 4];
+            lseek(fd, BLOCK_OFFSET(inode -> i_block[i]), SEEK_SET);
+            read(fd, indirect1, block_size);
+            for(unsigned int p = 0; p < block_size / 4; p++){
+              lseek(fd, BLOCK_OFFSET(indirect1[p]), SEEK_SET);
+              if(indirect1[p] == 0){
+                break;
+              }
+              uint indirect2[block_size / 4];
+              read(fd, indirect2, block_size);
+              for(unsigned int p2 = 0; p2 < block_size / 4; p2++){
+                lseek(fd, BLOCK_OFFSET(indirect2[p2]), SEEK_SET);
+                if(indirect2[p2] == 0){
+                  break;
+                }
+                uint indirect3[block_size / 4];
+                read(fd, indirect3, block_size);
+                for(unsigned int p3 = 0; p3 < block_size / 4; p2++){
+                  lseek(fd, BLOCK_OFFSET(indirect3[p3]), SEEK_SET);
+                  if(indirect3[p3] == 0){
+                    break;
+                  }
+                  read(fd, actualData, block_size);
+                  write(toWrite, actualData, block_size);
+                }
+              }
+            }
+          }
           else{
-            
+            printf("Unknown error from i block number");
           }
         }
         close(toWrite);
@@ -131,31 +156,31 @@ int main(int argc, char ** argv) {
     }
     free(inode);
   }
-  int count = 0;
-  for (unsigned int i = 0; i < super.s_inodes_per_group; i++) {
-    if (count == saved) {
-      break;
-    }
-    struct ext2_inode * inode = malloc(sizeof(struct ext2_inode));
-    read_inode(fd, 0, start_inode_table, i, inode);
-    if (S_ISDIR(inode -> i_mode)) {
-        struct ext2_dir_entry_2 * entry;
-        unsigned int size;
-        unsigned char block[block_size];
-        lseek(fd, BLOCK_OFFSET(inode -> i_block[0]), SEEK_SET);
-        read(fd, block, block_size); /* read block from disk*/
-        size = 0; /* keep track of the bytes read */
-        entry = (struct ext2_dir_entry_2 * ) block; /* first entry in the directory */
-        while (size < inode -> i_size) {
-          printf("The current size is %u\n", size);
-          char file_name[EXT2_NAME_LEN + 1];
-          memcpy(file_name, entry -> name, entry -> name_len);
-          file_name[entry -> name_len] = 0; /* append null char to the file name */
-          printf("%10u %s\n", entry -> inode, file_name);
-          entry = (void * ) entry + entry -> rec_len; /* move to the next entry */
-          size += entry -> rec_len;
-        }
-    }
-  }
+  // int count = 0;
+  // for (unsigned int i = 0; i < super.s_inodes_per_group; i++) {
+  //   if (count == saved) {
+  //     break;
+  //   }
+  //   struct ext2_inode * inode = malloc(sizeof(struct ext2_inode));
+  //   read_inode(fd, 0, start_inode_table, i, inode);
+  //   if (S_ISDIR(inode -> i_mode)) {
+  //       struct ext2_dir_entry_2 * entry;
+  //       unsigned int size;
+  //       unsigned char block[block_size];
+  //       lseek(fd, BLOCK_OFFSET(inode -> i_block[0]), SEEK_SET);
+  //       read(fd, block, block_size); /* read block from disk*/
+  //       size = 0; /* keep track of the bytes read */
+  //       entry = (struct ext2_dir_entry_2 * ) block; /* first entry in the directory */
+  //       while (size < inode -> i_size) {
+  //         printf("The current size is %u\n", size);
+  //         char file_name[EXT2_NAME_LEN + 1];
+  //         memcpy(file_name, entry -> name, entry -> name_len);
+  //         file_name[entry -> name_len] = 0; /* append null char to the file name */
+  //         printf("%10u %s\n", entry -> inode, file_name);
+  //         entry = (void * ) entry + entry -> rec_len; /* move to the next entry */
+  //         size += entry -> rec_len;
+  //       }
+  //   }
+  // }
   close(fd);
 }
