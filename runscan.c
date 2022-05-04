@@ -12,12 +12,13 @@
 
 #include <dirent.h>
 
+#include <unistd.h>
+
 int main(int argc, char ** argv) {
   if (argc != 3) {
     printf("expected usage: ./runscan inputfile outputfile\n");
     exit(0);
   }
-
   int fd;
 
   fd = open(argv[1], O_RDONLY); /* open disk image */
@@ -49,8 +50,9 @@ int main(int argc, char ** argv) {
   //iterate the first inode block
   off_t start_inode_table = locate_inode_table(0, & group);
 
-  // int savedIndoe[super.s_inodes_per_group];
-  // int saved = 0;
+  uint savedInode[super.s_inodes_per_group];
+  int saved = 0;
+  long savedFileSize[super.s_inodes_per_group];
 
   for (unsigned int i = 0; i < super.s_inodes_per_group; i++) {
     // printf("inode %u: \n", i);
@@ -68,8 +70,8 @@ int main(int argc, char ** argv) {
       }
       char actualData[block_size];
       if (is_jpg) {
-        // savedIndoe[saved] = currentInodeNum;
-        // saved++;
+        savedInode[saved] = currentInodeNum;
+        saved++;
         char file[100];
         sprintf(file, "%s/file-%d.jpg", argv[2], currentInodeNum);
         int toWrite = open(file, O_RDWR | O_CREAT | O_TRUNC, 0644);
@@ -81,6 +83,7 @@ int main(int argc, char ** argv) {
             lseek(fd, BLOCK_OFFSET(inode -> i_block[i]), SEEK_SET);
             read(fd, actualData, block_size);
             write(toWrite, actualData, block_size);
+            savedFileSize[saved - 1] += block_size;
           }
 
 
@@ -95,6 +98,7 @@ int main(int argc, char ** argv) {
               }
               read(fd, actualData, block_size);
               write(toWrite, actualData, block_size);
+              savedFileSize[saved - 1] += block_size;
             }
           }
 
@@ -116,6 +120,7 @@ int main(int argc, char ** argv) {
                 }
                 read(fd, actualData, block_size);
                 write(toWrite, actualData, block_size);
+                savedFileSize[saved - 1] += block_size;
               }
             }
           }
@@ -145,6 +150,7 @@ int main(int argc, char ** argv) {
                   }
                   read(fd, actualData, block_size);
                   write(toWrite, actualData, block_size);
+                  savedFileSize[saved - 1] += block_size;
                 }
               }
             }
@@ -158,27 +164,72 @@ int main(int argc, char ** argv) {
     }
     free(inode);
   }
-  // int count = 0;
+
+  int count = 0;
+
   for (unsigned int i = 0; i < super.s_inodes_per_group; i++) {
+    if(count == saved){
+      break;
+    }
     struct ext2_inode * inode = malloc(sizeof(struct ext2_inode));
     read_inode(fd, 0, start_inode_table, i, inode);
     if (S_ISDIR(inode -> i_mode)) {
       struct ext2_dir_entry_2 *entry;
       unsigned int size;
       unsigned char block[block_size];
-      lseek(fd, BLOCK_OFFSET(inode->i_block[0]), SEEK_SET);
-      read(fd, block, block_size);                         /* read block from disk*/
-      size = 0;                                            /* keep track of the bytes read */
-      entry = (struct ext2_dir_entry_2 *) block;           /* first entry in the directory */
-      while(size < inode->i_size) {
-        char file_name[EXT2_NAME_LEN+1];
-        memcpy(file_name, entry->name, entry->name_len);
-        file_name[entry->name_len] = 0;              /* append null char to the file name */
-        printf("%10u %s\n", entry->inode, file_name);
-        entry = (void*) entry + sizeof(__u32) + sizeof(__u16) + sizeof(__u8) + sizeof(__u8) + sizeof(char) * entry->name_len; 
-        size += sizeof(__u32) + sizeof(__u16) + sizeof(__u8) + sizeof(__u8) + sizeof(char) * entry->name_len;;
+      for(int j = 0; j < EXT2_N_BLOCKS; j++){
+        if(count == saved){
+          break;
+        }
+        lseek(fd, BLOCK_OFFSET(inode->i_block[j]), SEEK_SET);
+        read(fd, block, block_size);                         /* read block from disk*/
+        size = 0;                                            /* keep track of the bytes read */
+        entry = (struct ext2_dir_entry_2 *) block;           /* first entry in the directory */
+        while(size < inode->i_size) {
+          char file_name[EXT2_NAME_LEN+1];
+          memcpy(file_name, entry->name, entry->name_len);
+          file_name[entry->name_len] = 0;              /* append null char to the file name */
+          for(int n = 0; n < saved; n++){
+            if(entry->inode + 1 == savedInode[n]){
+              char target[100];
+              sprintf(target, "%s/file-%d.jpg", argv[2], savedInode[n]);
+              char toCopyed[entry->name_len + sizeof(argv[2])];
+              sprintf(toCopyed, "%s/%s", argv[2], file_name);
+              int fpNum = open(target, O_RDONLY);
+              int fpName = open(toCopyed, O_RDWR | O_CREAT | O_TRUNC, 0644);
+              char buffer[100];
+              int current = 0;
+              while(current * 100 < savedFileSize[n]){
+                read(fpNum, buffer, 100);
+                write(fpName, buffer, 100);
+                current += 1;
+              }
+              count += 1;
+              close(fpName);
+              close(fpName);
+            }
+          }
+
+
+
+          unsigned int nameSize = entry->name_len * sizeof(char);
+          unsigned int nameSize4Based = nameSize;
+          nameSize4Based = nameSize4Based / 4;
+          nameSize4Based = nameSize4Based * 4;
+          if(nameSize4Based < nameSize){
+            nameSize4Based += 4;
+          }
+
+          unsigned int toIncrease = sizeof(entry->inode) + sizeof(entry->rec_len) + sizeof(entry->name_len)  + sizeof(entry->file_type) + nameSize4Based;
+          
+          
+          entry = (void*) entry + toIncrease;
+          size += toIncrease;
+        }
       }
+      
     }
+    free(inode);
   }
   close(fd);
 }
