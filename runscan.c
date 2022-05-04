@@ -225,9 +225,17 @@ int main(int argc, char ** argv) {
               sprintf(toCopyed, "%s/%s", argv[2], file_name);
               int fpNum = open(target, O_RDONLY);
               int fpName = open(toCopyed, O_RDWR | O_CREAT | O_TRUNC, 0644);
-              char buffer[savedFileSize[n]];
-              read(fpNum, buffer, savedFileSize[n]);
-              write(fpName, buffer, savedFileSize[n]);
+              long max = savedFileSize[n];
+              while(max - block_size > 0){
+                char buffer[block_size];
+                read(fpNum, buffer, block_size);
+                write(fpName, buffer, block_size);
+                max -= block_size; 
+              }
+              char buffer[max];
+              read(fpNum, buffer, max);
+              write(fpName, buffer, max);
+              max -= max; 
               count += 1;
               close(fpName);
               close(fpName);
