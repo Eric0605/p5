@@ -19,18 +19,18 @@ int main(int argc, char ** argv) {
   // File descriptor to store disk images to read
   int fd;
   fd = open(argv[1], O_RDONLY); /* open disk image */
+
+  // Remove directory if it exists
+  char removeDir[100];
+  sprintf(removeDir, "rm -rf %s", argv[2]);
+  system(removeDir);
+
   // Make new directory; then open it
   int outputDirMade = mkdir(argv[2], S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
   if (outputDirMade == -1) {
     printf("Failing creating output directory %s 1\n", argv[2]);
     exit(-1);
   }
-  /*
-  // Remove directory if it exists
-  char removeDir[100];
-  sprintf(removeDir, "rm -rf %s", argv[2]);
-  system(removeDir);
-*/
   DIR * outputDir = opendir(argv[2]);
   if (outputDir == 0) {
     printf("Failing creating output directory %s 2\n", argv[2]);
